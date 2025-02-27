@@ -2,13 +2,13 @@
 % Please edit documentation in R/regression-stat.R
 \name{regression-stats}
 \alias{regression-stats}
-\alias{stat_regression_global}
-\alias{stat_regression_coef}
+\alias{stat_lm_global}
+\alias{stat_lm}
 \title{Test Statistics for the Linear Regression Problem}
 \usage{
-stat_regression_global(vars, response, ...)
+stat_lm_global(vars, response, ...)
 
-stat_regression_coef(vars, response, coef, ...)
+stat_lm(vars, response, index, ...)
 }
 \arguments{
 \item{vars}{A data frame of all variables used as predictors in the model.}
@@ -17,7 +17,7 @@ stat_regression_coef(vars, response, coef, ...)
 
 \item{...}{Extra parameters specific to some statistics.}
 
-\item{coef}{For tests on one coefficient, an integer specifying the index of
+\item{index}{For tests on one coefficient, an integer specifying the index of
 the coefficient to be tested.}
 }
 \value{
@@ -34,9 +34,9 @@ dissimilarities between data points.
 \section{Traditional Test Statistics}{
 
 \itemize{
-\item \code{\link[=stat_regression_global]{stat_regression_global()}} implements the F statistic used to test
+\item \code{\link[=stat_lm_global]{stat_lm_global()}} implements the F statistic used to test
 globally the coefficients of the regression.
-\item \code{\link[=stat_regression_coef]{stat_regression_coef()}} implements the t statistic used to test one
+\item \code{\link[=stat_lm]{stat_lm()}} implements the t statistic used to test one
 coefficient of the regression.
 }
 }
@@ -44,7 +44,7 @@ coefficient of the regression.
 \examples{
 response_var <- iris$Sepal.Length
 predictors <- iris[2:5]
-stat_regression_global(predictors, response_var)
-stat_regression_coef(predictors, response_var, coef = 1)
+stat_lm_global(predictors, response_var)
+stat_lm(predictors, response_var, index = 1)
 
 }

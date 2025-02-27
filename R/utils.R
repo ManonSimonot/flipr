@@ -8,8 +8,8 @@ abort <- function(msg) {
 # returns list(distance matrix, group memberships)
 # for other data types:
 # returns list(list(vars), group memberships) for 1-sample, 2-sample or ANOVA
-# returns list(list(response var), list(qualitative vars) , list(other vars)) for regression
-convert_to_list <- function(..., flag_anova = FALSE) {
+# returns list(response var, list(qualitative vars) , list(other vars)) for regression
+convert_to_list <- function(..., flag_anova = FALSE, flag_regression = FALSE) {
   l <- rlang::list2(...)
   n <- length(l)
 
@@ -20,6 +20,26 @@ convert_to_list <- function(..., flag_anova = FALSE) {
   if (is_flipr_format(...)) {
     return(l)
   }
+
+  # Case of regression
+  if (flag_regression) {
+    response <- l[[1]]
+    if (is.data.frame(l[[2]])) {
+      types <- sapply(l[[2]], class)
+      quali_vars <- as.list(l[[2]][types == "factor"])
+      other_vars <- as.list(l[[2]][types != "factor"])
+      return(list(response, quali_vars, other_vars))
+    }
+    quali_vars <- list()
+    other_vars <- list()
+    for (i in 2:n) {
+      if(is.factor(l[[i]])) {quali_vars <- append(quali_vars, list(l[[i]]))}
+      else {other_vars <- append(other_vars, list(l[[i]]))}
+    }
+    return(list(response, quali_vars, other_vars))
+
+  }
+
 
   # Case of (M)ANOVA with a factor as second argument
   if (n == 2 && is.factor(l[[2]])) {
@@ -101,8 +121,6 @@ convert_to_list <- function(..., flag_anova = FALSE) {
     return(c(new_data, list(new_factor)))
   }
 
-  # TODO Case regression
-
   # Case of other objects contained in lists
   if (is.list(l[[1]])) {
     new_factor <- rep(1, length(l[[1]]))
@@ -146,10 +164,12 @@ is_flipr_format <- function(...) {
   # data format for distance matrix
   } else if (n == 2 && is.factor(l[[2]]) && inherits(l[[1]], "dist")) {
     return(TRUE)
+  # data format for regression
+  } else if (n == 3 && is.numeric(l[[1]]) && is.list(l[[2]]) && is.list(l[[3]])) {
+    return(TRUE)
   } else {
     return(FALSE)
   }
-  # TODO for regression
 }
 
 

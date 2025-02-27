@@ -1,15 +1,26 @@
 compute_confidence_interval <- function(pf,
                                         point_estimate,
                                         conf_level = 0.95,
-                                        type = c("interval", "lower_bound", "upper_bound")) {
+                                        type = c("interval", "lower_bound", "upper_bound"),
+                                        regression = FALSE) {
   if (pf$nparams != 1)
     abort("This function computes a confidence interval. It therefore expect a one-dimensional plausibility function.")
 
   type <- match.arg(type)
 
-  cost <- function(.x) {
-    pvalues <- pf$get_value(.x)
-    pvalues - (1 - conf_level)
+  if (regression) {
+    cost <- function(.x) {
+      key <- names(pf$parameters)
+      named_params <- list()
+      named_params[[key]] <- .x
+      pvalues <- pf$get_value(named_params)
+      pvalues - (1 - conf_level)
+    }
+  } else {
+    cost <- function(.x) {
+      pvalues <- pf$get_value(.x)
+      pvalues - (1 - conf_level)
+    }
   }
 
   if (point_estimate > 0) {
@@ -44,6 +55,7 @@ compute_confidence_interval <- function(pf,
 get_ci <- function(object,
                    pf,
                    conf_level = 0.95,
+                   regression = FALSE,
                    ...) {
   if (!inherits(object, "param"))
     abort("The first argument should be a `param` object.")
@@ -61,7 +73,8 @@ get_ci <- function(object,
     pf = pf,
     conf_level = conf_level,
     type = type,
-    point_estimate = point_estimate
+    point_estimate = point_estimate,
+    regression = regression
   )
   if (!dials::is_unknown(rngs$lower))
     rngs$upper <- ci[2]

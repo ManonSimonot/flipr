@@ -52,6 +52,7 @@ run_permutation_scheme <- function(type,
                                    B,
                                    perm_data,
                                    stat_data,
+                                   indexes = 0,
                                    M,
                                    combine_with,
                                    ...) {
@@ -70,18 +71,19 @@ run_permutation_scheme <- function(type,
       perm_data = perm_data,
       stat_data = stat_data,
       stat_fun = stats[[1]],
+      index = indexes,
       ...
     )
   }
   else {
-    Tp <- stats %>%
-      purrr::map(function(.x, ...) {
+    Tp <- purrr::map2(stats, indexes, function(.x, .index, ...) {
         sapply(
           X = 0:B,
           FUN = get_permuted_statistic,
           perm_data = perm_data,
           stat_data = stat_data,
           stat_fun = .x,
+          index = .index,
           ...
         )
       }, ...) %>%
@@ -115,6 +117,6 @@ flipn <- function(n) {
     t()
 }
 
-get_permuted_statistic <- function(i, perm_data, stat_data, stat_fun, ...) {
-  stat_fun(stat_data, perm_data[, i + 1], ...)
+get_permuted_statistic <- function(i, perm_data, stat_data, stat_fun, index, ...) {
+  stat_fun(stat_data, perm_data[, i + 1], index = index, ...)
 }

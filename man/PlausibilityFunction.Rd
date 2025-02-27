@@ -325,6 +325,7 @@ Create a new plausibility function object.
   stat_functions,
   stat_assignments,
   ...,
+  regression = FALSE,
   seed = NULL
 )}\if{html}{\out{</div>}}
 }
@@ -351,6 +352,9 @@ is thus used to set it. Each element of the list should be named after
 the parameter it identifies.}
 
 \item{\code{...}}{Vectors, matrices or lists providing the observed samples.}
+
+\item{\code{regression}}{A boolean indicating if we are in the regression case
+or not.}
 
 \item{\code{seed}}{A numeric value specifying the seed to be used. Defaults to
 \code{NULL} in which case \code{seed = 1234} is used and the user is informed of

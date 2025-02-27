@@ -23,6 +23,8 @@ PlausibilityFunction <- R6::R6Class(
     #'   this list should match the number of parameters under investigation and
     #'   is thus used to set it. Each element of the list should be named after
     #'   the parameter it identifies.
+    #' @param regression A boolean indicating if we are in the regression case
+    #'   or not.
     #' @param ... Vectors, matrices or lists providing the observed samples.
     #' @param seed A numeric value specifying the seed to be used. Defaults to
     #'   `NULL` in which case `seed = 1234` is used and the user is informed of
@@ -33,7 +35,9 @@ PlausibilityFunction <- R6::R6Class(
                           stat_functions,
                           stat_assignments,
                           ...,
-                          seed = NULL) {
+                          regression = FALSE,
+                          seed = NULL
+                          ) {
       if (!is_function(null_spec))
         abort("The `null_spec` argument should be of class `function`.")
       private$set_null_spec(null_spec)
@@ -47,7 +51,7 @@ PlausibilityFunction <- R6::R6Class(
       private$set_stat_assignments(stat_assignments)
       private$set_nparams(length(stat_assignments))
 
-      private$set_data(...)
+      private$set_data(..., flag_regression = regression)
 
       param_names <- names(stat_assignments)
       self$parameters <- list2()
@@ -159,10 +163,9 @@ PlausibilityFunction <- R6::R6Class(
     #' pf$alternative
     set_alternative = function(val) {
       if (!(val %in% private$alternative_choices))
-        abort(paste0(
-          "The `alternative` argument should be one of ",
-          private$alternative_choices,
-          "."
+        abort(paste0("The `alternative` argument should be one of ",
+                     paste0(list("left_tail", "right_tail", "two_tail"), collapse = " "),
+                     "."
         ))
       self$alternative <- val
     },
@@ -286,7 +289,34 @@ PlausibilityFunction <- R6::R6Class(
           "."
         ))
       withr::local_seed(self$seed)
-      if (private$nsamples == 1) {
+
+      # Regression
+      if (length(private$data) == 3) {
+        response   <- private$data[[1]]
+        quali_vars <- private$data[[2]]
+        other_vars <- private$data[[3]]
+
+        all_vars <- c(other_vars, quali_vars)
+        out_null_spec <- private$null_spec(response, all_vars, parameters)
+
+        indexes <- as.integer(names(parameters))
+
+        test_result <- regression_test(
+          fitted = out_null_spec$fitted,
+          residuals = out_null_spec$residuals,
+          vars = all_vars,
+          indexes = indexes,
+          stats = private$stat_functions,
+          B = self$nperms,
+          M = self$nperms_max,
+          alternative = self$alternative,
+          type = self$pvalue_formula,
+          combine_with = self$aggregator,
+          ...
+        )
+
+      # One sample
+      } else if (private$nsamples == 1) {
         x <- private$null_spec(unlist(private$data[[1]]), parameters)
         test_result <- one_sample_test(
           x = x,
@@ -298,6 +328,8 @@ PlausibilityFunction <- R6::R6Class(
           combine_with = self$aggregator,
           ...
         )
+
+      # Two sample
       } else if(private$nsamples == 2) {
         y <- unlist(private$data[[1]][which(private$data[[2]] == 2)])
         y <- private$null_spec(y, parameters)
@@ -312,6 +344,8 @@ PlausibilityFunction <- R6::R6Class(
           combine_with = self$aggregator,
           ...
         )
+
+      # ANOVA
       } else if(private$nsamples > 2) {
         memberships <- private$data[[2]]
         data <- private$data[[1]]
@@ -344,8 +378,6 @@ PlausibilityFunction <- R6::R6Class(
           ...
         )
       }
-
-      #TODO Regression
 
       if (keep_null_distribution && keep_permutations)
         return(test_result)
@@ -434,7 +466,8 @@ PlausibilityFunction <- R6::R6Class(
                                   lower_bound = -10,
                                   upper_bound =  10,
                                   estimate = FALSE,
-                                  overwrite = FALSE) {
+                                  overwrite = FALSE,
+                                  regression = FALSE) {
       if (!anyNA(self$point_estimate) && !overwrite) {
         abort("A point estimate has already been set. If you want to compute it again, please re-run the `$set_point_estimate()` method with `overwrite = TRUE)`.")
       }
@@ -464,7 +497,7 @@ PlausibilityFunction <- R6::R6Class(
         .x$point_estimate <- .y
         .x
       })
-      private$set_univariate_nulls()
+      private$set_univariate_nulls(regression)
     },
 
     #' @field parameters A list of functions of class `param` produced via
@@ -506,7 +539,8 @@ PlausibilityFunction <- R6::R6Class(
     #'   conf_level = 0.8
     #' )
     #' pf$parameters
-    set_parameter_bounds = function(point_estimate, conf_level) {
+    set_parameter_bounds = function(point_estimate, conf_level,
+                                    regression = FALSE) {
       if (!any(dials::has_unknowns(self$parameters)) &&
           is_equal(point_estimate, self$point_estimate) &&
           conf_level == self$max_conf_level) {
@@ -532,8 +566,10 @@ PlausibilityFunction <- R6::R6Class(
           stat_functions = private$stat_functions,
           stat_assignments = private$stat_assignments[param_index],
           !!!private$data,
+          regression = regression,
           seed = self$seed
         )
+
         pvf_temp$set_nperms(self$nperms)
         pvf_temp$set_alternative("two_tail")
 
@@ -551,8 +587,10 @@ PlausibilityFunction <- R6::R6Class(
         self$parameters[[param_index]] <- dials::finalize(
           object = self$parameters[[param_index]],
           pf = pvf_temp,
-          conf_level = conf_level
+          conf_level = conf_level,
+          regression = regression
         )
+
       }
     },
 
@@ -700,10 +738,15 @@ PlausibilityFunction <- R6::R6Class(
 
     data = NULL,
     nsamples = 2,
-    set_data = function(...) {
-      private$data <- convert_to_list(...)
-      private$data[[2]] <- as.factor(as.numeric(private$data[[2]]))
-      private$nsamples <- length(levels(private$data[[2]]))
+    set_data = function(..., flag_regression) {
+      private$data <- convert_to_list(..., flag_regression = flag_regression)
+      if (!flag_regression) {
+        private$data[[2]] <- as.factor(as.numeric(private$data[[2]]))
+        private$nsamples <- length(levels(private$data[[2]]))
+      }
+      else {
+        private$nsamples <- length(private$data[[2]]) + length(private$data[[3]])
+      }
     },
 
     set_nparams = function(val) {
@@ -720,13 +763,22 @@ PlausibilityFunction <- R6::R6Class(
     pvalue_formula_choices = c("exact", "upper_bound", "estimate"),
 
     univariate_nulls = NULL,
-    set_univariate_nulls = function() {
-      private$univariate_nulls <- 1:self$nparams %>%
-        purrr::map(~ function(y, parameters) {
-          all_parameters <- self$point_estimate
-          all_parameters[.x] <- parameters[1]
-          private$null_spec(y, all_parameters)
-        })
+    set_univariate_nulls = function(regression) {
+      if (regression) {
+        private$univariate_nulls <- 1:self$nparams %>%
+          purrr::map(~ function(y, vars, parameters) {
+            all_parameters <- self$point_estimate
+            all_parameters[.x] <- parameters[1]
+            private$null_spec(y, vars, all_parameters)
+          })
+      } else {
+        private$univariate_nulls <- 1:self$nparams %>%
+          purrr::map(~ function(y, parameters) {
+            all_parameters <- self$point_estimate
+            all_parameters[.x] <- parameters[1]
+            private$null_spec(y, all_parameters)
+          })
+      }
     },
 
     stat_assignments = NULL,

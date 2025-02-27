@@ -5,10 +5,12 @@
 \title{Linar Regression Permutation Test}
 \usage{
 regression_test(
-  response,
+  original_response,
+  fitted,
+  residuals,
   vars,
-  coef = 0,
-  stats = list(stat_regression_global),
+  index,
+  stats = list(stat_lm),
   B = 1000L,
   M = NULL,
   alternative = "right_tail",
@@ -19,11 +21,15 @@ regression_test(
 )
 }
 \arguments{
-\item{response}{An numeric vector representing the response variable.}
+\item{original_response}{An numeric vector representing the response variable.}
+
+\item{fitted}{The fitted values of the reduced model.}
+
+\item{residuals}{The residual values of the reduced model.}
 
 \item{vars}{A data frame of all variables used as predictors in the model.}
 
-\item{coef}{For tests on one coefficient, an integer specifying the index of
+\item{index}{For tests on one coefficient, an integer specifying the index of
 the coefficient to be tested.}
 
 \item{stats}{A list of functions produced by \code{\link[rlang:as_function]{rlang::as_function()}}
@@ -33,7 +39,7 @@ Alternatively, one can provide its own implementation of test statistics
 that (s)he deems relevant for the problem at hand. See the section
 \emph{User-supplied statistic function} for more information on how these
 user-supplied functions should be structured for compatibility with the
-\strong{flipr} framework. Defaults to \code{list(stat_regression_global)}.}
+\strong{flipr} framework. Defaults to \code{list(stat_lm)}.}
 
 \item{B}{The number of sampled permutations. Default is \code{1000L}.}
 
@@ -92,22 +98,21 @@ variable.
 to be tested in the case of a test on a specific coefficient.
 }
 
-See the \code{\link[=stat_regression_global]{stat_regression_global()}} function for an example.
+See the \code{\link[=stat_lm]{stat_lm()}} function for an example.
 }
 
 \examples{
-out1 <- regression_test(
-  response = iris$Sepal.Length,
-  vars = iris[2:5],
-  stats = list(stat_regression_global)
-)
-out1$pvalue
-
+Y <- iris$Sepal.Length
+regressors <- iris[2:5]
+reduced_vars <- regressors[- c(1)]
+fit <- lm(Y ~ ., data = reduced_vars)
 out2 <- regression_test(
-  response = iris$Sepal.Length,
+  original_response = Y,
+  fitted <- fit$fitted,
+  residuals <- fit$residuals,
   vars = iris[2:5],
-  coef = 1,
-  stats = list(stat_regression_coef)
+  index = 1,
+  stats = list(stat_lm)
 )
 out2$pvalue
 }

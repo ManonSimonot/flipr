@@ -58,7 +58,7 @@ plot_pf <- function(pf, alpha = 0.05, ngrid = 10, subtitle = "") {
   if (pf$nparams == 1) {
     nm <- names(pf$parameters)
     pf$grid %>%
-      ggplot(aes_string(nm[1], "pvalue")) +
+      ggplot(aes(x = .data[[nm[1]]], y = pvalue)) +
       geom_line() +
       labs(
         title = format_title(paste(
@@ -108,7 +108,7 @@ plot_pf <- function(pf, alpha = 0.05, ngrid = 10, subtitle = "") {
   } else {
     nm <- names(pf$parameters)
     pf$grid %>%
-      ggplot(aes_string(nm[1], nm[2], z = "pvalue")) +
+      ggplot(aes(.data[[nm[1]]], .data[[nm[2]]], z = pvalue)) +
       geom_contour_filled(binwidth = 0.05) +
       labs(
         title = "Contour plot of the plausibility function",

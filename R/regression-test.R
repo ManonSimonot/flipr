@@ -13,11 +13,13 @@
 #' - the third argument is optional and represent the index of the coefficient
 #' to be tested in the case of a test on a specific coefficient.
 #'
-#' See the [`stat_regression_global()`] function for an example.
+#' See the [`stat_lm()`] function for an example.
 #'
-#' @param response An numeric vector representing the response variable.
+#' @param original_response An numeric vector representing the response variable.
+#' @param fitted The fitted values of the reduced model.
+#' @param residuals The residual values of the reduced model.
 #' @param vars A data frame of all variables used as predictors in the model.
-#' @param coef For tests on one coefficient, an integer specifying the index of
+#' @param index For tests on one coefficient, an integer specifying the index of
 #' the coefficient to be tested.
 #' @param stats A list of functions produced by [`rlang::as_function()`]
 #'   specifying the chosen test statistic(s). A number of test statistic
@@ -26,7 +28,7 @@
 #'   that (s)he deems relevant for the problem at hand. See the section
 #'   *User-supplied statistic function* for more information on how these
 #'   user-supplied functions should be structured for compatibility with the
-#'   **flipr** framework. Defaults to `list(stat_regression_global)`.
+#'   **flipr** framework. Defaults to `list(stat_lm)`.
 #' @param B The number of sampled permutations. Default is `1000L`.
 #' @param M The total number of possible permutations. Defaults to `NULL`, which
 #'   means that it is automatically computed from the given sample size(s).
@@ -61,22 +63,21 @@
 #' @export
 #'
 #' @examples
-#' out1 <- regression_test(
-#'   response = iris$Sepal.Length,
-#'   vars = iris[2:5],
-#'   stats = list(stat_regression_global)
-#' )
-#' out1$pvalue
-#'
+#' Y <- iris$Sepal.Length
+#' regressors <- iris[2:5]
+#' reduced_vars <- regressors[- c(1)]
+#' fit <- lm(Y ~ ., data = reduced_vars)
 #' out2 <- regression_test(
-#'   response = iris$Sepal.Length,
+#'   fitted <- fit$fitted,
+#'   residuals <- fit$residuals,
 #'   vars = iris[2:5],
-#'   coef = 1,
-#'   stats = list(stat_regression_coef)
+#'   index = 1,
+#'   stats = list(stat_lm)
 #' )
 #' out2$pvalue
-regression_test <- function(response, vars, coef = 0,
-                            stats = list(stat_regression_global),
+regression_test <- function(fitted, residuals,
+                            vars, indexes,
+                            stats = list(stat_lm),
                             B = 1000L,
                             M = NULL,
                             alternative = "right_tail",
@@ -85,26 +86,14 @@ regression_test <- function(response, vars, coef = 0,
                             seed = NULL,
                             ...) {
 
-  #if (rlang::is_bare_numeric(vars) || is.matrix(vars) || is.data.frame(vars))
-  #data <- purrr::array_tree(vars, margin = 1)
+  if (rlang::is_bare_numeric(vars) || is.matrix(vars) || is.data.frame(vars))
+    vars <- list(vars)
 
-  if (rlang::is_bare_numeric(vars) || is.matrix(vars)) {
-    vars <- as.data.frame(vars)
-  }
-
-  if (!is.data.frame(vars)) {
+  if (!is.list(vars))
     abort("The {.arg data} argument should be either of class {.cls numeric} or
-           of class {.cls matrix} or of class {.cls dataframe}.")
-  }
+          of class {.cls matrix} or of class {.cls list}}.")
 
-  # if (!is.list(data) && !inherits(data, "dist"))
-  #   abort("The {.arg data} argument should be either of class {.cls numeric} or
-  #         of class {.cls matrix} or of class {.cls list} or of class {.cls dist}.")
-
-  if (!rlang::is_bare_numeric(response))
-    abort("The {.arg response} argument should be a numeric vector.")
-
-  original_response <- response
+  response <- fitted + residuals
   n <- length(response)
 
   # Compute total number of permutations yielding to distinct
@@ -113,28 +102,20 @@ regression_test <- function(response, vars, coef = 0,
     M <- factorial(n) - 1
 
   # Case of global test
-  if (coef == 0) {
+  if (indexes == 0) {
     # Generate permutation data by permuting response
-    perm_data <- replicate(B, sample(original_response, size = n))
-    perm_data <- cbind(original_response, perm_data)
+    perm_data <- replicate(B, sample(response, size = n))
+    perm_data <- cbind(response, perm_data)
   }
 
   # Case of one coefficient test
   else {
     # Generate permutation data by permuting residuals of reduced model
-
-    # reduced model
-    reduced_vars <- vars[-c(coef)]
-    reduced_mod <- stats::lm(original_response ~ ., data = reduced_vars)
-
-    # residuals of reduced model
-    residuals <- reduced_mod$residuals
-
     perm_residuals <- replicate(B, sample(residuals, size = n))
 
-    # permuted response
-    perm_data <- reduced_mod$fitted + perm_residuals
-    perm_data <- cbind(original_response, perm_data)
+    # Permuted response
+    perm_data <- fitted + perm_residuals
+    perm_data <- cbind(response, perm_data)
   }
 
   run_permutation_scheme(
@@ -144,7 +125,7 @@ regression_test <- function(response, vars, coef = 0,
     B = B,
     perm_data = perm_data,
     stat_data = vars,
-    coef = coef,
+    indexes = indexes,
     M = M,
     combine_with = combine_with,
     ...
