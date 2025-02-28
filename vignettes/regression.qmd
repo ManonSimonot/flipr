@@ -1,0 +1,234 @@
+---
+title: "Performing regression"
+format: 
+  html:
+    toc: true
+    html-math-method: mathjax
+vignette: >
+  %\VignetteIndexEntry{Performing Regression}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+library(flipr)
+library(dplyr)
+library(ggplot2)
+```
+
+
+Tests on regression coefficients are a little different than the already implemented tests. For instance, for regression, `convert_to_list()` returns a list of three components: the response variable, a list of qualitative variables, a list of all the other variables. Furthermore, the null specification needs to have three arguments: the response variable, the regressors and the parameters, whereas for all the previous implemented tests there were only the variables and the parameters. Finally, I chose to use named lists to link the index of the coefficient to test with its parameter value, which makes another difference with how the other tests work.
+
+To implemented it into flipr I added lots of `regression` flags in the function arguments, that user needs to specify in a number of functions. This may not be the prettiest and most efficient way to do it but I couldn't find another way to do it, at least in the time I had to do it.
+
+The global test does not work entirely because there is a problem when using `set_parameter_bounds()` to then compute the entire plausibility function. But it seems to work to get one p-value with `get_value()`.
+
+The code for the test on one coefficient works in the sense that we don't get errors. When doing a few tests with `get_values()` I thought that it worked well, but when I computed all the plausibility function I saw that there is a problem which is shown in the following.
+
+
+## Test on one coefficient
+
+For tests on one coefficient, we permut the residuals. Then, we get the t-statistic of the regression model for the coefficient that we are testing. User can test multiple cofficients.
+
+Here we modelize the sepal length with the other variables from the iris data set.
+
+```{r}
+response_var <- iris$Sepal.Length
+regressors <- iris[2:5]
+```
+
+User have to specify the index of the coefficient to test, with respect to the order of the data: qualitative variables come after the other variables. It does not matter in which order you give the values to the plausibility function.
+
+In our example, the variables will be ordered like this:
+
+- Sepal width
+- Petal length
+- Petal width
+- Species
+
+So if we want to test the coefficient for the variable Petal width, it is the 3rd one. That means that in our stat assignment we indicate it by naming the parameter 3. And when we want to get a p-value, we also pass a named list to the function for the parameter argument: `list("3" = 0)` for example to test if the 3rd coefficient is equal to zero.
+
+Furthermore, the user needs to set the regression argument of the plausibility function to `TRUE`.
+
+```{r}
+# we assume parameter is a named list: 
+# list("index of beta to test" = value of parameter to test)
+null_spec <- function(Y, regressors, parameters) {
+  regressors <- as.data.frame(regressors)
+  for (index in names(parameters)) {
+    var <- regressors[,as.integer(index)]
+    if (is.factor(var)) {var <- as.integer(var)}
+    Y <- Y - parameters[[index]] * var
+  }
+  fit <- lm(Y ~ ., data = regressors)
+  list(fitted = fit$fitted, residuals = fit$residuals)
+}
+
+stat_functions <- list(stat_lm)
+stat_assignments <- list("3" = 1)
+
+pf <- PlausibilityFunction$new(
+  null_spec = null_spec,
+  stat_functions = stat_functions,
+  stat_assignments = stat_assignments,
+  response_var, regressors,
+  regression = TRUE
+)
+
+pf_rt <- PlausibilityFunction$new(
+  null_spec = null_spec,
+  stat_functions = stat_functions,
+  stat_assignments = stat_assignments,
+  response_var, regressors,
+  regression = TRUE
+)
+```
+
+
+```{r}
+pf_rt$set_alternative("right_tail")
+```
+
+Here, the estimator for our coefficient is -0.315 (founded by constructing a lm model), so if we get the p-value for this value we want to get a very high p-value. The thing is that we get a high p value for the estimator if we change the alternative for `right_tail`, but then the rest of the plausibility function is not satisfying.
+
+```{r}
+pf$get_value(list("3" = 0))
+pf$get_value(list("3" = -0.315))
+
+pf_rt$get_value(list("3" = 0))
+pf_rt$get_value(list("3" = -0.315))
+```
+
+Now we will compute the entire plausibility function.
+
+```{r}
+fit <- lm(response_var ~ ., data = regressors)
+estimate <- summary(fit)$coefficients[4, 1]
+
+pf$set_point_estimate(estimate, overwrite = TRUE, regression = TRUE)
+pf$point_estimate
+
+pf_rt$set_point_estimate(estimate, overwrite = TRUE, regression = TRUE)
+pf_rt$point_estimate
+```
+
+```{r}
+pf$set_parameter_bounds(
+  point_estimate = pf$point_estimate, 
+  conf_level = pf$max_conf_level,
+  regression = TRUE
+)
+pf$parameters
+
+pf_rt$set_parameter_bounds(
+  point_estimate = pf$point_estimate, 
+  conf_level = pf$max_conf_level,
+  regression = TRUE
+)
+pf_rt$parameters
+```
+
+```{r}
+pf$set_grid(
+  parameters = pf$parameters, 
+  npoints = 50
+)
+
+pf$evaluate_grid(grid = pf$grid)
+plot_pf(pf)
+
+pf_rt$set_grid(
+  parameters = pf_rt$parameters, 
+  npoints = 50
+)
+
+pf_rt$evaluate_grid(grid = pf_rt$grid)
+plot_pf(pf_rt)
+```
+
+If we keep the alternative to `two_tail`, we have a pvalue with a satisfying shape except for the estimator value. If we set it to `right_tail`, we have a high pvalue for the estimator but then the rest of the function is not satisfying.
+
+
+
+## Global test
+
+For the global test, we can permut directly the responses. Then, we need to get the F-statistic of the regression model.
+
+To distinguish this test from the one testing individual coefficient, the user needs to call the parameter "0", in the stat assignment and when calling the get value function.
+
+```{r}
+response_var <- iris$Sepal.Length
+regressors <- iris[2:5]
+```
+
+```{r}
+null_spec <- function(Y, regressors, parameters) {
+  param <- parameters[[1]]
+  for (var in regressors) {
+    if (is.factor(var)) {var <- as.integer(var)}
+    Y <- Y - param * var
+  }
+  fit <- lm(Y ~ ., data = regressors)
+  list(fitted = fit$fitted, residuals = fit$residuals)
+}
+
+stat_functions <- list(stat_lm_global)
+
+# here 0 indicates that we will do a global test
+stat_assignments <- list("0" = 1)
+
+pf <- PlausibilityFunction$new(
+  null_spec = null_spec,
+  stat_functions = stat_functions,
+  stat_assignments = stat_assignments,
+  response_var, regressors,
+  regression = TRUE
+)
+```
+
+
+Here we test if globally the coefficients have an effect on the response variable, we get a p-value of zero which seems coherent because all variables are significatives (we can see that by building a `lm` model).
+
+```{r}
+pf$get_value(list("0" = 0))
+```
+
+
+We can try to compute the entire plausibility function:
+
+```{r}
+fit <- lm(response_var ~ ., data = regressors)
+estimate <- summary(fit)$f[1]
+
+pf$set_point_estimate(estimate, overwrite = TRUE, regression = TRUE)
+pf$point_estimate
+```
+
+At this step we get a warning: `Warning: essentially perfect fit: summary may be unreliable` and then an error: `Error in stats::integrate(stats::pbinom, 0, 0.5/(M + 1), q = b, size = B) : non-finite function value.`
+
+```{r}
+pf$set_parameter_bounds(
+  point_estimate = pf$point_estimate, 
+  conf_level = pf$max_conf_level,
+  regression = TRUE
+)
+pf$parameters
+```
+
+So we can not go to the last step of computing the plausibility function.
+
+```{r}
+pf$set_grid(
+  parameters = pf$parameters, 
+  npoints = 50
+)
+
+pf$evaluate_grid(grid = pf$grid)
+plot_pf(pf)
+```
+
+
